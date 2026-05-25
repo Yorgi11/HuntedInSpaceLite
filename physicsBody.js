@@ -93,7 +93,7 @@ const maxCollisionFragments = 10;
 const fragmentAreaBudgetScale = 1.0;
 
 // Dynamic bodies below this mass start decaying to zero.
-const minimumBodyMass = 10;
+const minimumBodyMass = 20;
 
 // Dynamic bodies below this kinetic energy start decaying to zero.
 const minimumBodyKineticEnergy = 0;

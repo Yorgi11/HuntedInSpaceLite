@@ -18,18 +18,14 @@ let lasers = [];
 
 function setup() {
   createCanvas(canvasWidth, canvasHeight);
-  player = new Player(width * 0.5, height * 0.5);
+  player = new Player((width * 0.5) - 375, (height * 0.5) - 375);
   cameraPosition = player.position.copy();
 
   planets = [
-    /*
+    
     new PhysicsBody(960, 540, 100, null, 20.5, {
       isStatic: true,
       color: color(168, 123, 86),
-    }),*/
-    new PhysicsBody(960, 540, 50, 0, 41.0, {
-      isStatic: false,
-      color: color(30, 110, 220),
     }),
   ];
 

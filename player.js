@@ -28,19 +28,19 @@ class Player {
   }
 
   handleInput(t) {
-    if (keyIsDown(LEFT_ARROW) || keyIsDown(65)) {
+    if (keyIsDown(LEFT_ARROW) || keyIsDown(65) || keyIsDown(97)) {
       this.angle -= this.turnSpeed * t;
     }
 
-    if (keyIsDown(RIGHT_ARROW) || keyIsDown(68)) {
+    if (keyIsDown(RIGHT_ARROW) || keyIsDown(68) || keyIsDown(100)) {
       this.angle += this.turnSpeed * t;
     }
 
-    if (keyIsDown(UP_ARROW) || keyIsDown(87)) {
+    if (keyIsDown(UP_ARROW) || keyIsDown(87) || keyIsDown(119)) {
       this.applyThrust(1);
     }
 
-    if (keyIsDown(DOWN_ARROW) || keyIsDown(83)) {
+    if (keyIsDown(DOWN_ARROW) || keyIsDown(83) || keyIsDown(115)) {
       this.applyThrust(-0.2);
     }
   }
