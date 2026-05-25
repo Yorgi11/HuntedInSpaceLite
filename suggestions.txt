@@ -1,0 +1,14 @@
+Add atmpsphere through, distance slowdown
+closer to the planet add linear and angular friction through exponential drop off to zero
+add heating based on friction
+use blue bloom to show atmosphere.
+atmosphere should be optional in creation, if null should be based on object radius and mass from density
+
+when not fracturing it should empart all energy as heat
+
+add direction lock, look in move direction, look in opposite to move, towards or away from gravitational center
+
+modify fracturing to utilize a mesh/voxel system. Stil spawn new smaller bodies, utilize mesh/voxels for object destruction only
+
+add mining mode 1,2. (explosive damage++, heating+)
+Damage mode 1,2. (explosive damage+++, heating++) for lasers
