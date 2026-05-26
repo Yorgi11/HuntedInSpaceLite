@@ -50,6 +50,11 @@ function draw() {
   applyPlanetGravity(bodyLists.activePlanets, bodyLists.staticGravityBodies, t);
   applyDynamicGravity(bodyLists.dynamicBodies, t);
   applyPlayerGravity(bodyLists.inactivePlayerGravityBodies, t);
+  applyAtmospheres(
+    bodyLists.atmosphereBodies,
+    bodyLists.atmosphereAffectedBodies,
+    t,
+  );
   updateStaticPlanets(t);
   updateDynamicBodies(bodyLists.updatableBodies, t);
   updateLasers(t);
@@ -115,7 +120,11 @@ function drawWorld(renderLists) {
 function isBodyInRenderBounds(body, bounds) {
   const bloomRadius =
     typeof body.getBloomRadius === "function" ? body.getBloomRadius() : 0;
-  const renderRadius = max(body.radius || 0, bloomRadius);
+  const atmosphereRadius =
+    typeof body.getAtmosphereRenderRadius === "function"
+      ? body.getAtmosphereRenderRadius()
+      : 0;
+  const renderRadius = max(body.radius || 0, bloomRadius, atmosphereRadius);
 
   return isCircleInBounds(
     body.position.x,
@@ -239,6 +248,8 @@ function buildBodyLists() {
     inactivePlayerGravityBodies,
     dynamicBodies: [player, ...activeBodies],
     staticGravityBodies: [player, ...bodies, ...lasers],
+    atmosphereBodies: [...activePlanets, ...activeBodies],
+    atmosphereAffectedBodies: [player, ...activeBodies, ...lasers],
     updatableBodies: [player, ...bodies],
     collisionBodies: [player, ...activePlanets, ...activeBodies, ...lasers],
   };
@@ -315,6 +326,121 @@ function applyPlayerGravity(gravityBodies, t) {
   }
 }
 
+function applyAtmospheres(atmosphereBodies, affectedBodies, t) {
+  for (const atmosphereBody of atmosphereBodies) {
+    if (!atmosphereBody.atmosphere || atmosphereBody.isDecaying) {
+      continue;
+    }
+
+    for (const affectedBody of affectedBodies) {
+      applyAtmosphereFriction(atmosphereBody, affectedBody, t);
+    }
+  }
+}
+
+function applyAtmosphereFriction(atmosphereBody, affectedBody, t) {
+  if (
+    !affectedBody ||
+    affectedBody === atmosphereBody ||
+    affectedBody.isStatic ||
+    affectedBody.isDecaying
+  ) {
+    return;
+  }
+
+  const dx = affectedBody.position.x - atmosphereBody.position.x;
+  const dy = affectedBody.position.y - atmosphereBody.position.y;
+  const distance = sqrt(dx * dx + dy * dy);
+  const influence = atmosphereBody.getAtmosphereInfluence(distance);
+
+  if (influence <= 0) {
+    return;
+  }
+
+  const atmosphereVelocity = atmosphereBody.velocity || createVector(0, 0);
+  const relativeVelocity = p5.Vector.sub(
+    affectedBody.velocity,
+    atmosphereVelocity,
+  );
+  const linearFriction =
+    1 - Math.exp(-atmosphereBody.atmosphere.linearFrictionRate * influence * t);
+  const velocityDelta = p5.Vector.mult(relativeVelocity, linearFriction);
+  const linearHeat = getLinearFrictionHeat(
+    affectedBody,
+    relativeVelocity,
+    velocityDelta,
+    atmosphereBody.atmosphere.frictionHeatScale,
+  );
+
+  affectedBody.velocity.sub(velocityDelta);
+  addHeatEnergy(affectedBody, linearHeat);
+  addHeatEnergy(
+    atmosphereBody,
+    linearHeat * atmosphereBody.atmosphere.ownerHeatShare,
+  );
+
+  if (!(affectedBody instanceof PhysicsBody)) {
+    return;
+  }
+
+  const angularFriction =
+    1 -
+    Math.exp(-atmosphereBody.atmosphere.angularFrictionRate * influence * t);
+  const previousAngularVelocity = affectedBody.angularVelocity;
+
+  affectedBody.angularVelocity *= 1 - angularFriction;
+
+  const angularHeat = getAngularFrictionHeat(
+    affectedBody,
+    previousAngularVelocity,
+    affectedBody.angularVelocity,
+    atmosphereBody.atmosphere.frictionHeatScale,
+  );
+
+  addHeatEnergy(affectedBody, angularHeat);
+  addHeatEnergy(
+    atmosphereBody,
+    angularHeat * atmosphereBody.atmosphere.ownerHeatShare,
+  );
+}
+
+function getLinearFrictionHeat(
+  body,
+  relativeVelocity,
+  velocityDelta,
+  heatScale,
+) {
+  if (!body.mass || body.mass <= 0) {
+    return 0;
+  }
+
+  const previousSpeedSq = relativeVelocity.magSq();
+  const nextVelocity = p5.Vector.sub(relativeVelocity, velocityDelta);
+  const nextSpeedSq = nextVelocity.magSq();
+  const lostEnergy = 0.5 * body.mass * max(previousSpeedSq - nextSpeedSq, 0);
+
+  return lostEnergy * heatScale;
+}
+
+function getAngularFrictionHeat(
+  body,
+  previousAngularVelocity,
+  nextAngularVelocity,
+  heatScale,
+) {
+  if (body.mass <= 0 || body.radius <= 0) {
+    return 0;
+  }
+
+  const momentOfInertia = 0.5 * body.mass * body.radius * body.radius;
+  const previousEnergy =
+    0.5 * momentOfInertia * previousAngularVelocity * previousAngularVelocity;
+  const nextEnergy =
+    0.5 * momentOfInertia * nextAngularVelocity * nextAngularVelocity;
+
+  return max(previousEnergy - nextEnergy, 0) * heatScale;
+}
+
 function applyGravityFromBodyToPlayer(body, t) {
   if (!body || body === player || body.isLaser || body.mass <= 0) {
     return;
@@ -333,10 +459,12 @@ function applyGravityFromBodyToPlayer(body, t) {
     player.radius + body.radius + gravitationalSoftening,
   );
   const acceleration = (G * body.mass) / (distance * distance);
+  const directionX = dx / rawDistance;
+  const directionY = dy / rawDistance;
 
-  player.acceleration.x += (dx / rawDistance) * acceleration;
-  player.acceleration.y += (dy / rawDistance) * acceleration;
-  addGravityAcceleration(player, acceleration);
+  player.acceleration.x += directionX * acceleration;
+  player.acceleration.y += directionY * acceleration;
+  addGravityAcceleration(player, acceleration, directionX, directionY);
 }
 
 function applyMutualGravity(bodyA, bodyB, t) {
@@ -360,7 +488,7 @@ function applyMutualGravity(bodyA, bodyB, t) {
   if (!bodyA.isStatic) {
     bodyA.acceleration.x += directionX * accelerationA;
     bodyA.acceleration.y += directionY * accelerationA;
-    addGravityAcceleration(bodyA, accelerationA);
+    addGravityAcceleration(bodyA, accelerationA, directionX, directionY);
     applyGravityAlignmentTorque(bodyA, bodyB.position, accelerationA, t);
     addGravitationalHeat(bodyB, bodyA, accelerationA, distance, t);
   }
@@ -368,7 +496,7 @@ function applyMutualGravity(bodyA, bodyB, t) {
   if (!bodyB.isStatic) {
     bodyB.acceleration.x -= directionX * accelerationB;
     bodyB.acceleration.y -= directionY * accelerationB;
-    addGravityAcceleration(bodyB, accelerationB);
+    addGravityAcceleration(bodyB, accelerationB, -directionX, -directionY);
     applyGravityAlignmentTorque(bodyB, bodyA.position, accelerationB, t);
     addGravitationalHeat(bodyA, bodyB, accelerationB, distance, t);
   }
@@ -403,6 +531,12 @@ function keyPressed() {
 
   if (laser) {
     lasers.push(laser);
+  }
+}
+
+function mousePressed() {
+  if (typeof handleHudMousePressed === "function") {
+    handleHudMousePressed();
   }
 }
 
@@ -486,3 +620,4 @@ function resolveAllCollisions(collisionBodies, t) {
 window.setup = setup;
 window.draw = draw;
 window.keyPressed = keyPressed;
+window.mousePressed = mousePressed;

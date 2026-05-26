@@ -16,24 +16,41 @@ class Player {
     this.directionChangeAccelerationScale = 0.05;
     this.drag = 1.0;
     this.laserCooldownTimer = 0;
+    this.directionLockEnabled = false;
+    this.directionLockMode = "move";
+    this.gravityDirectionThisFrame = createVector(0, 0);
   }
 
   resetForces() {
     this.acceleration.set(0, 0);
     this.gravityAccelerationThisFrame = 0;
+    this.gravityDirectionThisFrame.set(0, 0);
   }
 
-  addGravityAcceleration(amount) {
+  addGravityAcceleration(amount, directionX = 0, directionY = 0) {
     this.gravityAccelerationThisFrame += amount;
+
+    if (amount > 0) {
+      this.gravityDirectionThisFrame.x += directionX * amount;
+      this.gravityDirectionThisFrame.y += directionY * amount;
+    }
   }
 
   handleInput(t) {
-    if (keyIsDown(LEFT_ARROW) || keyIsDown(65) || keyIsDown(97)) {
+    const turningLeft = keyIsDown(LEFT_ARROW) || keyIsDown(65) || keyIsDown(97);
+    const turningRight =
+      keyIsDown(RIGHT_ARROW) || keyIsDown(68) || keyIsDown(100);
+
+    if (turningLeft) {
       this.angle -= this.turnSpeed * t;
     }
 
-    if (keyIsDown(RIGHT_ARROW) || keyIsDown(68) || keyIsDown(100)) {
+    if (turningRight) {
       this.angle += this.turnSpeed * t;
+    }
+
+    if (this.directionLockEnabled && !turningLeft && !turningRight) {
+      this.steerTowardDirectionLock(t);
     }
 
     if (keyIsDown(UP_ARROW) || keyIsDown(87) || keyIsDown(119)) {
@@ -43,6 +60,74 @@ class Player {
     if (keyIsDown(DOWN_ARROW) || keyIsDown(83) || keyIsDown(115)) {
       this.applyThrust(-0.2);
     }
+  }
+
+  setDirectionLockEnabled(isEnabled) {
+    this.directionLockEnabled = isEnabled;
+  }
+
+  setDirectionLockMode(mode) {
+    this.directionLockMode = mode;
+    this.directionLockEnabled = true;
+  }
+
+  steerTowardDirectionLock(t) {
+    const targetAngle = this.getDirectionLockAngle();
+
+    if (targetAngle === null) {
+      return;
+    }
+
+    this.angle = this.steerAngleToward(this.angle, targetAngle, this.turnSpeed * t);
+  }
+
+  steerAngleToward(currentAngle, targetAngle, maxTurn) {
+    const angleDelta = Math.atan2(
+      sin(targetAngle - currentAngle),
+      cos(targetAngle - currentAngle),
+    );
+
+    if (Math.abs(angleDelta) <= maxTurn) {
+      return targetAngle;
+    }
+
+    return currentAngle + Math.sign(angleDelta) * maxTurn;
+  }
+
+  getDirectionLockAngle() {
+    if (this.directionLockMode === "move") {
+      return this.getVelocityDirectionAngle(0);
+    }
+
+    if (this.directionLockMode === "reverseMove") {
+      return this.getVelocityDirectionAngle(PI);
+    }
+
+    if (this.directionLockMode === "gravity") {
+      return this.getGravityDirectionAngle(0);
+    }
+
+    if (this.directionLockMode === "antiGravity") {
+      return this.getGravityDirectionAngle(PI);
+    }
+
+    return null;
+  }
+
+  getVelocityDirectionAngle(offset) {
+    if (this.velocity.magSq() <= 0.01) {
+      return null;
+    }
+
+    return this.velocity.heading() + offset;
+  }
+
+  getGravityDirectionAngle(offset) {
+    if (this.gravityDirectionThisFrame.magSq() <= 0.000001) {
+      return null;
+    }
+
+    return this.gravityDirectionThisFrame.heading() + offset;
   }
 
   applyThrust(thrustScale = 1) {
